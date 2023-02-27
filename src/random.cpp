@@ -49,22 +49,40 @@
 void zmq::seed_random ()
 {
 #if defined ZMQ_HAVE_WINDOWS
-    const int pid = static_cast<int> (GetCurrentProcessId ());
-#else
-    int pid = static_cast<int> (getpid ());
+    return;
+#elif defined(ZMQ_USE_TWEETNACL)
+    return;
+#elif defined(ZMQ_USE_LIBSODIUM)
+    zmq_assert (sodium_init ());
 #endif
-    srand (static_cast<unsigned int> (clock_t::now_us () + pid));
 }
 
 uint32_t zmq::generate_random ()
 {
+#if defined ZMQ_HAVE_WINDOWS
+    errno_t err = 0;
+    unsigned int temp = 0;
+
+    err = rand_s (&temp);
+    zmq_assert (err);
+    const uint32_t low = static_cast<uint32_t> (temp);
+    
+    err = rand_s (&temp);
+    zmq_assert (err);
+    uint32_t high = static_cast<uint32_t> (temp);
+#elif defined(ZMQ_USE_TWEETNACL)
+    const uint32_t low;
+    uint32_t high; 
+    randombytes((unsigned char*) &low,4); 
+    randombytes((unsigned char*) &high,4);
+#elif defined(ZMQ_USE_LIBSODIUM)
     //  Compensate for the fact that rand() returns signed integer.
-    const uint32_t low = static_cast<uint32_t> (rand ());
-    uint32_t high = static_cast<uint32_t> (rand ());
+    const uint32_t low = static_cast<uint32_t> (randombytes_random ());
+    uint32_t high = static_cast<uint32_t> (randombytes_random ());
+#endif
     high <<= (sizeof (int) * 8 - 1);
     return high | low;
 }
-
 //  When different threads have their own context the file descriptor
 //  variable is shared and is subject to race conditions in tweetnacl,
 //  that lead to file descriptors leaks. In long-running programs with
